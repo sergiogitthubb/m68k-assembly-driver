@@ -1,80 +1,117 @@
-* =================================================================
-* SECCIÓN 1: TABLA DE VECTORES (Direcciones $0 a $3FF)
-* =================================================================
-    ORG $0
-    DC.L $8000              * Puntero de pila inicial (SSP)
-    DC.L START              * PC inicial (donde empieza el código)
 
-    ORG $100                * Vector 40 (Hex): $40 * 4 = $100
-    DC.L RTI                * Dirección de la rutina de interrupción
+MR1A EQU $EFFC01
+MR2A EQU $EFFC01
+SRA EQU $EFFC03
+CSRA EQU $EFFC03
+CRA EQU $EFFC05
+RBA EQU $EFFC07
+TBA EQU $EFFC07
+ACR EQU $EFFC09
+ISR EQU $EFFC0B
+IMR EQU $EFFC0B
+MR1B EQU $EFFC11
+MR2B EQU $EFFC11
+SRB EQU $EFFC13
+CSRB EQU $EFFC13
+CRB EQU $EFFC15
+RBB EQU $EFFC17
+TBB EQU $EFFC17
+IVR EQU $EFFC19
 
-* =================================================================
-* SECCIÓN 2: PROGRAMA PRINCIPAL Y DATOS (A partir de $400)
-* =================================================================
     ORG $400
 
-START:
-    * 1. Configuración de manejadores de excepciones (Opcional pero recomendado)
-    * (Aquí podrías copiar el código de la pág. 76 para depurar errores)
 
-    * 2. Inicialización del sistema
-    BSR INIT                * Llama a tu rutina de configuración
-    MOVE.W #$2000, SR       * Habilita interrupciones en el micro (Nivel 0)
-
-BUCLE_PRINCIPAL:
-    * Aquí irá tu código de prueba (ej: el de las páginas 75-76)
-    * Por ahora, un bucle infinito para que no se "escape" el micro:
-    BRA BUCLE_PRINCIPAL
-
-* =================================================================
-* SECCIÓN 3: SUBRUTINAS OBLIGATORIAS
-* =================================================================
+* Rutina de Inicialización
 
 INIT:
-    INIT:
-    LINK A6,#0            * Crea el marco de pila para variables locales
-    
-    * 1. Inicializar los buffers internos
-    BSR INI_BUFS          * Llama a la rutina de la biblioteca para limpiar colas
+    *Velocidad adecuada ambas lineas
+    MOVE.B #$0, ACR
+    MOVE.B #$CC, CSRA
+    MOVE.B #$CC, CSRB
+    *8 bits por carácter y modo normal en ambas líneas
+    MOVE.B #$03, MR1A
+    MOVE.B #$00, MR2A
+    MOVE.B #$03, MR1B
+    MOVE.B #$00, MR2B
+    *Vector de interrupción 40
+    MOVE.B #$40, IVR
+    *Ajuste mascara interrupción para recepción y transmisión
+    MOVE.B #$22, IMR
+    *Habilitar transmision y recepcion
+    MOVE.B #$05, CRA
+    MOVE.B #$05, CRB
+    *Actualización dirección de RTI tabla de vectores
+    MOVE.L #RTI, $100
+    BSR INI_BUFS
 
-    * 2. Configurar la DUART MC68681 (Línea A)
-    * OJO: Se usa MOVE.B porque los registros de la DUART son de 8 bits
-    MOVE.B #$13, $EFFC01  * MR1A: 8 bits/carácter y avisa al recibir (RxRDY)
-    MOVE.B #$07, $EFFC01  * MR2A: Modo normal, sin eco automático
-    MOVE.B #$80, $EFFC09  * ACR: Selecciona el Conjunto 2 de velocidades
-    MOVE.B #$CC, $EFFC03  * CSRA: Velocidad a 38400 bps (tanto en Tx como Rx)
-    MOVE.B #$40, $EFFC19  * IVR: Le decimos que use el vector de interrupción $40
-    MOVE.B #$02, $EFFC0B  * IMR: Habilita SOLO el aviso de recepción (RxRDY) por ahora
-    MOVE.B #$05, $EFFC05  * CRA: Habilita el transmisor y el receptor para empezar
+    RTS
 
-    * 3. Permitir que el microprocesador escuche las interrupciones
-    MOVE.W #$2000, SR     * Pone la máscara del SR a nivel 0 (escucha todo)
-
-    UNLK A6               * Destruye el marco de pila
-    RTS                   * Vuelve al programa principal
-
+* ---------------------------------------------------------
+* Rutina de Lectura (No bloqueante)
+* ---------------------------------------------------------
 SCAN:
-    LINK A6,#0
-    * --- Tu código aquí (usando LEECAR) ---
+
+    LINK A6, #0 *Anclaje en A6 para parámetros
+    CLR.L D1
+    CLR.L D2
+    MOVE.L 8(A6), A1 * Buffer
+    MOVE.W 12(A6), D1 * Descriptor
+
+    CMP.W #0, D1
+    BEQ PARAMETROS_OK
+     CMP.W #1, D1
+    BEQ PARAMETROS_OK
+    BRA ERROR_PARAMETROS * Si llega aquí, es que no es ni 0 ni 1 el descriptor
+    PARAMETROS_OK:
+    MOVE.W 14(A6), D2 * Tamaño
+    MOVE.L #0, D3 * Contador inicializado a 0
+    TST.L D2 *Testeo por si el tamaño es 0, si lo es salta al final del bucle de lectura
+    BEQ FIN_LECTURA
+
+    BUCLE_LECTURA:
+        MOVE.L D1, D0 *Paso descriptor a leecar en D0
+        BSR LEECAR 
+
+        CMP.L #-1, D0 *Asegurarnos de que siguen quedando caracteres en el buffer interno
+        BEQ FIN_LECTURA 
+
+        
+
+        MOVE.B D0, (A1)+ *Guardamos el caracter en  Buffer
+        ADD.L #1, D3 *Incrementamos el contador en 1
+
+        SUB.L #1, D2 *Restamos uno a tamaño y lo comparamos con 0 si no es igual, volvemos a iterar BUCLE_LECTURA
+        BNE BUCLE_LECTURA
+    FIN_LECTURA:    
+    MOVE.L D3, D0
     UNLK A6
     RTS
+    ERROR_PARAMETROS:
+        MOVE.L #$FFFFFFFF, D0
+        UNLK A6
+        RTS
 
+
+
+* ---------------------------------------------------------
+* Rutina de Escritura (No bloqueante)
+* ---------------------------------------------------------
 PRINT:
-    LINK A6,#0
-    * --- Tu código aquí (usando ESCCAR) ---
-    UNLK A6
+    * (Aquí irá la lógica de escritura)
     RTS
 
+* ---------------------------------------------------------
+* Rutina de Tratamiento de Interrupciones (RTI)
+* ---------------------------------------------------------
 RTI:
-    * --- Tu rutina de interrupción ---
-    * 1. Salvar registros: MOVEM.L D0-D7/A0-A6,-(A7)
-    * 2. Gestionar interrupción
-    * 3. Restaurar registros: MOVEM.L (A7)+,D0-D7/A0-A6
-    RTE                     * Fin de interrupción (¡No usar RTS!)
+    * (Aquí gestionaremos quién llamó a la puerta)
+    RTE
 
-* =================================================================
-* SECCIÓN 4: INCLUSIÓN DE BIBLIOTECAS
-* =================================================================
-    INCLUDE bib_aux.s       * Funciones auxiliares de la UPM
+
+
+
+
+
+INCLUDE bib_aux.s       * Funciones auxiliares de la UPM
     
-* ¡IMPORTANTE! Deja al menos una línea vacía aquí abajo
+

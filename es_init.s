@@ -98,7 +98,48 @@ SCAN:
 * ---------------------------------------------------------
 PRINT:
     * (Aquí irá la lógica de escritura)
-    RTS
+    LINK A6, #0
+    CLR.L D1
+    CLR.L D2
+    
+    MOVE.L 8(A6), A1 *Buffer
+    MOVE.W 12(A6), D1 *Descriptor
+    CMP.W #1, D1
+    BEQ PARAMETROS_OK_PRINT
+    CMP.W #0, D1
+    BEQ PARAMETROS_OK_PRINT
+    BRA ERROR_PARAMETROS_PRINT
+
+    PARAMETROS_OK_PRINT:
+
+    MOVE.W 14(A6), D2 *Tamaño
+    MOVE.L #0, D3  *Contador seteado a 0
+    TST.W D2 * Testeo de Tamaño por si es 0
+    BEQ FIN_ESCRITURA
+
+    BUCLE_ESCRITURA:
+        MOVE.B (A1)+, D4
+        MOVE.L D1, D0  *Paso el descriptor
+
+        BSR ESCCAR
+        
+        CMP.L #-1, D0 *Asegurarnos de que siguen quedando caracteres en el buffer interno
+        BEQ FIN_ESCRITURA 
+        
+
+
+
+        SUB.L #1, D2 *Restar a tamaño 1 hasta que sea 0 para finalizar el bucle
+        BNE BUCLE_ESCRITURA
+    FIN_ESCRITURA:
+        
+
+
+        RTS
+    ERROR_PARAMETROS_PRINT:
+        MOVE.L #$FFFFFFFF, D0
+        UNLK A6
+        RTS
 
 * ---------------------------------------------------------
 * Rutina de Tratamiento de Interrupciones (RTI)

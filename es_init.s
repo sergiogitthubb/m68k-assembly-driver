@@ -99,42 +99,44 @@ SCAN:
 PRINT:
     * (Aquí irá la lógica de escritura)
     LINK A6, #0
-    CLR.L D1
     CLR.L D2
+    CLR.L D3
     
     MOVE.L 8(A6), A1 *Buffer
-    MOVE.W 12(A6), D1 *Descriptor
-    CMP.W #1, D1
+    MOVE.W 12(A6), D2 *Descriptor
+    CMP.W #1, D2
     BEQ PARAMETROS_OK_PRINT
-    CMP.W #0, D1
+    CMP.W #0, D2
     BEQ PARAMETROS_OK_PRINT
     BRA ERROR_PARAMETROS_PRINT
 
     PARAMETROS_OK_PRINT:
 
-    MOVE.W 14(A6), D2 *Tamaño
-    MOVE.L #0, D3  *Contador seteado a 0
-    TST.W D2 * Testeo de Tamaño por si es 0
+    MOVE.W 14(A6), D3 *Tamaño
+    MOVE.L #0, D4  *Contador seteado a 0
+    TST.W D3 * Testeo de Tamaño por si es 0
     BEQ FIN_ESCRITURA
 
     BUCLE_ESCRITURA:
-        MOVE.B (A1)+, D4
-        MOVE.L D1, D0  *Paso el descriptor
+        MOVE.B (A1)+, D1
+        MOVE.L D2, D0
+        ADD.L #%10, D0 *Sumo 2 al descriptor para pasarle a D0 el valor correcto de Buffer
+        
 
         BSR ESCCAR
         
-        CMP.L #-1, D0 *Asegurarnos de que siguen quedando caracteres en el buffer interno
-        BEQ FIN_ESCRITURA 
-        
+        CMP.L #$FFFFFFFF, D0 
+        BEQ FIN_ESCRITURA
+
+        ADD.L #1, D4 * Aumento contador postcomprobaciones
 
 
 
-        SUB.L #1, D2 *Restar a tamaño 1 hasta que sea 0 para finalizar el bucle
+        SUB.L #1, D3 *Restar a tamaño 1 hasta que sea 0 para finalizar el bucle
         BNE BUCLE_ESCRITURA
     FIN_ESCRITURA:
-        
-
-
+        MOVE.L D4, D0
+        UNLK A6
         RTS
     ERROR_PARAMETROS_PRINT:
         MOVE.L #$FFFFFFFF, D0

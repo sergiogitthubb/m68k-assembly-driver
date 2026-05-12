@@ -37,6 +37,7 @@ INIT:
     MOVE.B #$40, IVR
     *Ajuste mascara interrupción para recepción y transmisión
     MOVE.B #$22, IMR
+    MOVE.B #$22, IMR_COPIA
     *Habilitar transmision y recepcion
     MOVE.B #$05, CRA
     MOVE.B #$05, CRB
@@ -129,8 +130,18 @@ PRINT:
         BEQ FIN_ESCRITURA
 
         ADD.L #1, D4 * Aumento contador postcomprobaciones
+        CMP.L #0, D2 
+        BEQ HABILITARTA
+        BRA HABILITARB
+        HABILITARTA:
+        BSET #0, IMR_COPIA
+        MOVE.B IMR_COPIA, IMR
+        BRA FINHABILITACIONES
+        HABILITARB:
+        BSET #4, IMR_COPIA
+        MOVE.B IMR_COPIA, IMR
 
-
+        FINHABILITACIONES:
 
         SUB.L #1, D3 *Restar a tamaño 1 hasta que sea 0 para finalizar el bucle
         BNE BUCLE_ESCRITURA
@@ -148,11 +159,69 @@ PRINT:
 * ---------------------------------------------------------
 RTI:
     * (Aquí gestionaremos quién llamó a la puerta)
+    MOVEM.L D0-D2, -(A7)
+    CLR.L D2
+    MOVE.B ISR, D2
+    BTST #1, D2
+    BEQ CHECKB *Si el bit de A es 0, paso a comprobar B
+
+
+    CLR.L D0 * Parametro buffer para ESCCAR
+    CLR.L D1 * Parámetro para el caracter
+    MOVE.B RBA, D1
+    MOVE.L #0, D0 *Pasamos un 0 al buffer para seleccionar linea A y recepcion
+    BSR ESCCAR
+
+    CHECKB:
+    BTST #5, D2
+    BEQ CHECKTA
+    
+    CLR.L D0 * Parametro buffer para ESCCAR
+    CLR.L D1 * Parámetro para el caracter
+    MOVE.B RBB, D1
+    MOVE.L #1, D0 *Pasamos un 1 al buffer para seleccionar linea B y recepcion
+    BSR ESCCAR
+
+
+    CHECKTA:
+
+    BTST #0, D2
+    BEQ CHECKTB
+
+    MOVE.L #2, D0
+    BSR LEECAR
+    CMP.L #-1, D0
+    BEQ INHABILITARTA
+    MOVE.B D0, TBA
+
+    CHECKTB:
+    BTST #4, D2
+    BEQ NOHAYINTERRUPCION
+    MOVE.L #3, D0
+    BSR LEECAR
+    CMP.L #-1, D0
+    BEQ INHABILITARTB
+    MOVE.B D0, TBB
+    BRA NOHAYINTERRUPCION
+
+    INHABILITARTA:
+    BCLR #0, IMR_COPIA
+    MOVE.B IMR_COPIA, IMR
+    BRA CHECKTB
+    INHABILITARTB:
+    BCLR #4, IMR_COPIA
+    MOVE.B IMR_COPIA, IMR
+
+    
+
+    
+    NOHAYINTERRUPCION:
+    MOVEM.L (A7)+, D0-D2
     RTE
 
 
 
-
+    IMR_COPIA: DC.B $00 *Copia del IMR
 
 
 INCLUDE bib_aux.s       * Funciones auxiliares de la UPM
